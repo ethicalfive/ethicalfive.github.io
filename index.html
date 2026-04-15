@@ -38,14 +38,24 @@
         let rootHandle = null;
 
         async function pickFolder() {
-            try {
-                // Requesting directory access
-                rootHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-                refreshGrid();
-            } catch (err) {
-                console.error("Access denied:", err);
-            }
+        // Check if the browser even supports this feature
+        if (!window.showDirectoryPicker) {
+            alert("Your browser does not support folder access. Please use Chrome on Android.");
+            return;
         }
+
+        try {
+            console.log("Opening picker...");
+            rootHandle = await window.showDirectoryPicker({ 
+                mode: 'readwrite' 
+            });
+            refreshGrid();
+        } catch (err) {
+            // This catches if the user hits 'Cancel' or if Android blocks it
+            alert("Error: " + err.message);
+            console.error(err);
+        }
+    }
 
         async function refreshGrid() {
             const grid = document.getElementById('fileGrid');
