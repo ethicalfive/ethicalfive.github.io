@@ -1,9 +1,11 @@
 {
-  "name": "Media Manager PWA",
-  "short_name": "MediaPWA",
-  "description": "A private tool to manage and view your images and videos offline.",
-  "start_url": "index.html",
+  "id": "pwa-media-manager-v1",
+  "name": "Media Manager Pro",
+  "short_name": "MediaMgr",
+  "description": "Professional filesystem manager and image rescaler for Android.",
+  "start_url": "./index.html",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#121212",
   "theme_color": "#007bff",
   "icons": [
