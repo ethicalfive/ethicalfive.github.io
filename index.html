@@ -3,38 +3,160 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Media Manager</title>
+    <title>PWA Media Manager</title>
     <link rel="manifest" href="manifest.json">
     <style>
-        body { font-family: sans-serif; background: #121212; color: white; padding: 20px; }
-        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 20px; }
-        .gallery img, .gallery video { width: 100%; border-radius: 8px; border: 1px solid #333; }
-        .controls { background: #1e1e1e; padding: 15px; border-radius: 10px; }
-        button { background: #007bff; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer; }
+        body { font-family: sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 800px; width: 100%; }
+        section { background: #1e1e1e; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #333; }
+        h2 { margin-top: 0; color: #007bff; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        
+        /* Rescaler UI */
+        .rescaler-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        input, button { padding: 12px; border-radius: 6px; border: none; font-size: 14px; }
+        input { background: #2a2a2a; color: white; border: 1px solid #444; }
+        button { background: #007bff; color: white; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        button.secondary { background: #444; }
+        button.danger { background: #dc3545; }
+        
+        /* Gallery UI */
+        .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin-top: 20px; }
+        .file-card { background: #2a2a2a; padding: 10px; border-radius: 8px; text-align: center; font-size: 12px; }
+        .file-card img { width: 100%; height: 120px; object-fit: cover; border-radius: 4px; margin-bottom: 8px; background: #000; }
+        .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 8px; }
+        
+        canvas { display: none; }
     </style>
 </head>
 <body>
 
-    <div class="controls">
-        <h1>Media Manager PWA</h1>
-        <input type="file" id="filePicker" accept="image/*,video/*" hidden>
-        <button onclick="document.getElementById('filePicker').click()">Import Image/Video</button>
-        <button onclick="loadGallery()">Refresh Gallery</button>
-    </div>
+<div class="container">
+    <h1>Media Manager Pro</h1>
 
-    <div class="gallery" id="gallery"></div>
+    <section>
+        <h2>1. Rescale & Import</h2>
+        <input type="file" id="imageUpload" accept="image/*" style="width:100%; margin-bottom:15px;">
+        
+        <div class="rescaler-grid">
+            <input type="number" id="targetW" placeholder="Width">
+            <input type="number" id="targetH" placeholder="Height">
+            <button class="secondary" onclick="setRes(192)">192px</button>
+            <button class="secondary" onclick="setRes(512)">512px</button>
+        </div>
+        
+        <button style="width: 100%; margin-top: 15px;" onclick="saveToFilesystem()">Rescale & Save to Folder</button>
+    </section>
 
-    <script>
-        // Register the Service Worker for PWA functionality
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js');
+    <section>
+        <h2>2. Managed Folder</h2>
+        <button id="btnOpen" onclick="setupFolder()">📂 Select Workspace Folder</button>
+        <div id="fileList" class="gallery">
+            <p style="color:#666">No folder selected yet.</p>
+        </div>
+    </section>
+</div>
+
+<canvas id="procCanvas"></canvas>
+
+<script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+    }
+
+    let dirHandle = null;
+    let sourceImg = new Image();
+    const canvas = document.getElementById('procCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Folder Management
+    async function setupFolder() {
+        try {
+            dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            document.getElementById('btnOpen').innerText = `📂 Folder: ${dirHandle.name}`;
+            refreshGallery();
+        } catch (e) { console.error("Folder access denied", e); }
+    }
+
+    async function refreshGallery() {
+        const list = document.getElementById('fileList');
+        list.innerHTML = '';
+        if (!dirHandle) return;
+
+        for await (const entry of dirHandle.values()) {
+            if (entry.kind === 'file') {
+                const file = await entry.getFile();
+                const card = document.createElement('div');
+                card.className = 'file-card';
+                
+                if (file.type.startsWith('image/')) {
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(file);
+                    card.appendChild(img);
+                }
+
+                const nameDiv = document.createElement('div');
+                nameDiv.className = 'file-name';
+                nameDiv.innerText = entry.name;
+                
+                const delBtn = document.createElement('button');
+                delBtn.className = 'danger';
+                delBtn.innerText = 'Delete';
+                delBtn.style.padding = '5px 10px';
+                delBtn.onclick = async () => {
+                    await dirHandle.removeEntry(entry.name);
+                    refreshGallery();
+                };
+
+                card.appendChild(nameDiv);
+                card.appendChild(delBtn);
+                list.appendChild(card);
+            }
         }
+    }
 
-        const filePicker = document.getElementById('filePicker');
-        const gallery = document.getElementById('gallery');
+    // Image Processing
+    document.getElementById('imageUpload').onchange = (e) => {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            sourceImg.onload = () => {
+                document.getElementById('targetW').value = sourceImg.width;
+                document.getElementById('targetH').value = sourceImg.height;
+            };
+            sourceImg.src = ev.target.result;
+        };
+        reader.readAsDataURL(e.target.files[0]);
+    };
 
-        // SAVE FILE TO OPFS
-        filePicker.addEventListener('change', async (e) => {
+    function setRes(size) {
+        document.getElementById('targetW').value = size;
+        document.getElementById('targetH').value = size;
+    }
+
+    async function saveToFilesystem() {
+        if (!dirHandle) return alert("Select a folder in Step 2 first!");
+        if (!sourceImg.src) return alert("Select an image in Step 1 first!");
+
+        const w = parseInt(document.getElementById('targetW').value);
+        const h = parseInt(document.getElementById('targetH').value);
+        
+        canvas.width = w;
+        canvas.height = h;
+        ctx.drawImage(sourceImg, 0, 0, w, h);
+        
+        canvas.toBlob(async (blob) => {
+            const name = `resized_${Date.now()}.png`;
+            const fileHandle = await dirHandle.getFileHandle(name, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            refreshGallery();
+            alert(`Saved ${name} to your folder!`);
+        }, 'image/png');
+    }
+</script>
+</body>
+</html>        filePicker.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
